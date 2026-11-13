@@ -62,7 +62,7 @@ def evaluate_answer(question: str, answer: str, evidence: list[dict]) -> Verdict
     """LLM call with structured output; validated against the Verdict schema (not a tool)."""
 
 def call_llm(messages: list, tools: list | None = None) -> LLMResponse:
-    """Single wrapper around the model provider (Gemini / Groq / mock) with timeout and retries."""
+    """Single wrapper around the model provider (OpenAI / Gemini / Groq / mock) with timeout and retries."""
 ```
 
 | Function | Purpose | Input | Output | Dependencies |
@@ -93,11 +93,10 @@ The following functions are registered as LLM-callable tools; the model decides 
 
 ## Model Selection
 
-- **Main model:** Google Gemini Flash via the Gemini API (Google AI Studio free tier). It supports function calling and structured JSON output.
-- **Fallback:** an open model on Groq (OpenAI-compatible API with tool calling) for rate-limit situations and fast demos.
+- **Main model:** OpenAI `gpt-5-mini` through the OpenAI API (paid, a few cents per practice session; I already have API credit). It supports function calling and structured JSON output. `gpt-4o-mini` is the cheaper alternative if spending grows.
+- **Free alternatives:** Google Gemini Flash (Google AI Studio free tier) and open models on Groq. Both expose OpenAI-compatible APIs with tool calling, so switching is a change in `.env`.
 - **Tests:** a mock client that returns scripted tool calls and responses, so the test suite does not need an API key or network access and can simulate API failures.
-- All providers sit behind one `call_llm` wrapper; the provider is selected in `.env`. API keys are never committed (`.env` is in `.gitignore`, `.env.example` is provided).
-- Note: on the free tier, inputs may be used by Google to improve its models, so the agent will only be pointed at my own course code, not private data.
+- All providers sit behind one `call_llm` wrapper; the provider is selected in `.env`. API keys are never committed (`.env` is in `.gitignore`, `.env.example` is provided). A monthly spending limit is set in the OpenAI dashboard.
 
 ## Architecture
 
@@ -105,7 +104,7 @@ The following functions are registered as LLM-callable tools; the model decides 
 User (CLI)
    │  "Quiz me on ./css4007-hw4, focus on error handling"
    ▼
-Agent loop  ──────────────►  call_llm (Gemini / Groq / Mock)
+Agent loop  ──────────────►  call_llm (OpenAI / Gemini / Groq / Mock)
    │   ▲                          │
    │   │ tool results             │ tool call(s) or text
    │   │                          ▼
@@ -168,7 +167,7 @@ Flow of one question:
 | Week | Dates | Plan |
 |---|---|---|
 | 10 | 02–08 Nov | Fork, choose topic and level, write this proposal, set up the Python project skeleton and `.env.example`. |
-| 11 | 09–15 Nov | `call_llm` wrapper for Gemini, first working request, mock client, basic README with setup instructions. |
+| 11 | 09–15 Nov | `call_llm` wrapper for OpenAI/Gemini/Groq, first working request, mock client, basic README with setup instructions. |
 | 12 | 16–22 Nov | File tools (`list_files`, `read_file`, `search_code`) with path sandbox; `Verdict` schema and `evaluate_answer` with validation and retry; first tests. |
 | 13 | 23–29 Nov | Register tools with the LLM, agent loop with real tool selection, tool execution logs; `run_tests` with timeout. |
 | 14 | 30 Nov–06 Dec | Complete session workflow: adaptive follow-ups, hints, `get_progress` / `save_progress`, session report; tool error handling. |
