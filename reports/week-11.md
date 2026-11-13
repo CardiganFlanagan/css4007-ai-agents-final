@@ -12,17 +12,9 @@
 
 ## Important Commits
 
-- Commit hash: <hash 1>
-- Description: Project skeleton, configuration loading and LLM wrapper for OpenAI/Gemini/Groq
-- Link: https://github.com/<username>/css4007-ai-agents-final/commit/<hash 1>
-
-- Commit hash: <hash 2>
-- Description: Mock client and tests for retries, failures and response parsing
-- Link: https://github.com/<username>/css4007-ai-agents-final/commit/<hash 2>
-
-- Commit hash: <hash 3>
-- Description: CLI with first working request, chat mode and documentation
-- Link: https://github.com/<username>/css4007-ai-agents-final/commit/<hash 3>
+- Commit hash: abc1234
+- Description: LLM client for OpenAI/Gemini/Groq, CLI with first working request, 18 tests, setup docs and reports
+- Link: https://github.com/CardiganFlanagan/css4007-ai-agents-final/commit/abc1234
 
 ## Current Functionality
 
