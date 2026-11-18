@@ -4,7 +4,7 @@ An LLM agent that prepares a student for the technical defense of their own proj
 it reads the student's repository, asks defense-style questions, checks answers against
 the real code, and decides what to ask next. Proposal: [reports/proposal.md](reports/proposal.md).
 
-**Status (week 11):** LLM integration and first working request. Tools and the agent loop come in weeks 12–13.
+**Status (week 12):** LLM client, repository tools with a path sandbox, and structured grading of answers. The agent loop that lets the model call the tools by itself comes in week 13.
 
 ## Setup
 
@@ -30,6 +30,10 @@ PYTHONPATH=src python -m defensecoach "Ask me one defense question about API err
 
 # conversation (type 'exit' to quit), -v shows LLM call logs
 PYTHONPATH=src python -m defensecoach --chat -v
+
+# grade one answer against a fragment of real code
+PYTHONPATH=src python -m defensecoach.try_grade --repo . --file src/defensecoach/llm_client.py --lines 55-85 \
+    --question "What happens when the provider times out?" --answer "It retries three times and then shows an error"
 ```
 
 On Windows PowerShell set the path first: `$env:PYTHONPATH="src"`.
@@ -48,9 +52,14 @@ Tests use a fake SDK and a mock client, so they need no API key.
 |---|---|
 | `src/defensecoach/config.py` | Reads `.env`, validates settings, hides the API key in logs |
 | `src/defensecoach/llm_client.py` | `call_llm` wrapper: one interface for OpenAI / Gemini / Groq / mock, retries with backoff, error types, response parsing |
-| `src/defensecoach/prompts.py` | System prompt of the examiner |
+| `src/defensecoach/prompts.py` | Examiner and grader prompts |
+| `src/defensecoach/tools.py` | `list_files`, `read_file`, `search_code`, path sandbox, argument validation, tool schemas |
+| `src/defensecoach/evaluation.py` | `Verdict` schema and `evaluate_answer`: JSON output, validation, citation check, retries |
+| `src/defensecoach/try_grade.py` | Command to grade one answer by hand |
 | `src/defensecoach/cli.py` | Command line: input validation, single request and chat mode |
-| `tests/test_llm_client.py` | Week 11 tests |
+| `tests/test_llm_client.py` | LLM client, config and CLI tests |
+| `tests/test_tools.py` | Tool and sandbox tests |
+| `tests/test_evaluation.py` | Grading tests |
 
 ## Error handling
 
@@ -61,6 +70,11 @@ Tests use a fake SDK and a mock client, so they need no API key.
 | Wrong key, unknown model, bad request | Not retried (it would not help), clear message |
 | Empty or too-long input | Rejected before calling the model |
 | Empty model output or broken tool-call JSON | `LLMError` with an explanation |
+| Path outside the repository, `..`, absolute path, symlink out | Rejected by the sandbox |
+| `.env`, keys, `.git`, `.venv` | Hidden from listing and search, reading is refused |
+| Wrong tool arguments (negative line, wrong type, unknown tool) | Error returned to the model, no crash |
+| Missing, binary or huge file | Clear tool error |
+| Grader returns broken JSON, wrong verdict value or cites code it was not given | Retried with the error explained, max 3 attempts |
 
 ## AI assistance
 
