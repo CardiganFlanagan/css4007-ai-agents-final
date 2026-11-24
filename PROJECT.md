@@ -4,7 +4,7 @@ An LLM agent that prepares a student for the technical defense of their own proj
 it reads the student's repository, asks defense-style questions, checks answers against
 the real code, and decides what to ask next. Proposal: [reports/proposal.md](reports/proposal.md).
 
-**Status (week 12):** LLM client, repository tools with a path sandbox, and structured grading of answers. The agent loop that lets the model call the tools by itself comes in week 13.
+**Status (week 13):** working agent. The model decides by itself which tools to call (read code, search, run tests, load and save progress), gets the results back and continues until it can answer. Next: the full practice session with grading and a session report (week 14).
 
 ## Setup
 
@@ -25,6 +25,9 @@ OpenAI dashboard; tests never call the real API.
 ## Run
 
 ```bash
+# practice session on one of your projects (the agent reads its code through tools)
+PYTHONPATH=src python -m defensecoach --repo ../css4007-hw4 --chat -v
+
 # one request
 PYTHONPATH=src python -m defensecoach "Ask me one defense question about API error handling"
 
@@ -37,6 +40,18 @@ PYTHONPATH=src python -m defensecoach.try_grade --repo . --file src/defensecoach
 ```
 
 On Windows PowerShell set the path first: `$env:PYTHONPATH="src"`.
+
+`-v` prints every tool call. All tool calls are also written to `logs/tool_calls.jsonl`,
+and results per project are saved in `progress/<project>.json` (both folders are ignored by git).
+
+By default `run_tests` runs `python -m pytest -q` in the examined project. Another command can be set
+in a `defensecoach.json` file in that project, for example:
+
+```json
+{"test_command": ["npm", "test"], "test_timeout": 120}
+```
+
+The model can only trigger this fixed command; it cannot pass its own command.
 
 ## Tests
 
@@ -53,13 +68,16 @@ Tests use a fake SDK and a mock client, so they need no API key.
 | `src/defensecoach/config.py` | Reads `.env`, validates settings, hides the API key in logs |
 | `src/defensecoach/llm_client.py` | `call_llm` wrapper: one interface for OpenAI / Gemini / Groq / mock, retries with backoff, error types, response parsing |
 | `src/defensecoach/prompts.py` | Examiner and grader prompts |
-| `src/defensecoach/tools.py` | `list_files`, `read_file`, `search_code`, path sandbox, argument validation, tool schemas |
+| `src/defensecoach/agent.py` | Agent loop: sends tool schemas, runs the tools the model asks for, returns results, step limit, tool log |
+| `src/defensecoach/tools.py` | `list_files`, `read_file`, `search_code`, `run_tests`, `get_progress`, `save_progress`, path sandbox, argument validation, tool schemas |
 | `src/defensecoach/evaluation.py` | `Verdict` schema and `evaluate_answer`: JSON output, validation, citation check, retries |
 | `src/defensecoach/try_grade.py` | Command to grade one answer by hand |
-| `src/defensecoach/cli.py` | Command line: input validation, single request and chat mode |
+| `src/defensecoach/cli.py` | Command line: agent mode with `--repo`, single request and chat mode |
+| `src/defensecoach/inputs.py` | User input checks |
 | `tests/test_llm_client.py` | LLM client, config and CLI tests |
 | `tests/test_tools.py` | Tool and sandbox tests |
 | `tests/test_evaluation.py` | Grading tests |
+| `tests/test_agent.py` | Agent loop, tool selection, run_tests, progress, CLI agent mode |
 
 ## Error handling
 
@@ -75,6 +93,9 @@ Tests use a fake SDK and a mock client, so they need no API key.
 | Wrong tool arguments (negative line, wrong type, unknown tool) | Error returned to the model, no crash |
 | Missing, binary or huge file | Clear tool error |
 | Grader returns broken JSON, wrong verdict value or cites code it was not given | Retried with the error explained, max 3 attempts |
+| Model keeps calling tools without answering | Stops after 8 steps with a message |
+| Tests hang or the test command is missing | Timeout / clear tool error |
+| Wrong `--repo` path | Clear error, exit code 2 |
 
 ## AI assistance
 

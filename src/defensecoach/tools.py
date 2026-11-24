@@ -1,6 +1,11 @@
 import fnmatch
+import json
 import logging
+import re
+import subprocess
+import sys
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -11,6 +16,9 @@ SECRET_FILES = [".env", ".env.*", "*.pem", "*.key", "id_rsa*", "*.p12", "secrets
 MAX_FILES = 200
 MAX_LINES = 300
 MAX_FILE_SIZE = 1_000_000
+CONFIG_FILE = "defensecoach.json"
+DEFAULT_TEST_COMMAND = [sys.executable, "-m", "pytest", "-q"]
+DEFAULT_TEST_TIMEOUT = 120
 
 
 class ToolError(Exception):
@@ -27,10 +35,28 @@ def is_secret(filename):
 
 
 class Repo:
-    def __init__(self, folder):
+    def __init__(self, folder, progress_dir="progress"):
         self.root = Path(folder).resolve()
         if not self.root.is_dir():
             raise ToolError(f"Repository folder not found: {folder}")
+        self.progress_file = Path(progress_dir) / f"{self.root.name}.json"
+        self.test_command = DEFAULT_TEST_COMMAND
+        self.test_timeout = DEFAULT_TEST_TIMEOUT
+        self.load_config()
+
+    def load_config(self):
+        config_path = self.root / CONFIG_FILE
+        if not config_path.is_file():
+            return
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            raise ToolError(f"{CONFIG_FILE} is not valid JSON.")
+        command = config.get("test_command", self.test_command)
+        if not isinstance(command, list) or not all(isinstance(x, str) for x in command) or not command:
+            raise ToolError(f"test_command in {CONFIG_FILE} must be a list of strings.")
+        self.test_command = command
+        self.test_timeout = int(config.get("test_timeout", self.test_timeout))
 
     def safe_path(self, path):
         path = (path or ".").strip().replace("\\", "/")
@@ -118,6 +144,51 @@ def search_code(repo, query, max_results=20):
     return {"query": query, "matches": matches, "truncated": False}
 
 
+def run_tests(repo):
+    try:
+        done = subprocess.run(repo.test_command, cwd=repo.root, capture_output=True, text=True,
+                              timeout=repo.test_timeout)
+    except subprocess.TimeoutExpired:
+        raise ToolError(f"Tests did not finish in {repo.test_timeout} seconds.")
+    except FileNotFoundError:
+        raise ToolError(f"Test command not found: {repo.test_command[0]}")
+
+    output = done.stdout + done.stderr
+    passed = re.search(r"(\d+) passed", output)
+    failed = re.search(r"(\d+) failed", output)
+    return {"command": " ".join(repo.test_command),
+            "exit_code": done.returncode,
+            "passed": int(passed.group(1)) if passed else None,
+            "failed": int(failed.group(1)) if failed else 0 if passed else None,
+            "output_tail": output[-1500:]}
+
+
+def load_progress(repo):
+    if not repo.progress_file.is_file():
+        return {}
+    try:
+        return json.loads(repo.progress_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def get_progress(repo):
+    return {"repo": repo.root.name, "topics": load_progress(repo)}
+
+
+def save_progress(repo, topic, verdict, note=""):
+    progress = load_progress(repo)
+    entry = progress.get(topic, {"attempts": 0, "history": []})
+    entry["attempts"] += 1
+    entry["last_verdict"] = verdict
+    entry["history"] = (entry["history"] + [{"verdict": verdict, "note": note}])[-5:]
+    progress[topic] = entry
+
+    repo.progress_file.parent.mkdir(parents=True, exist_ok=True)
+    repo.progress_file.write_text(json.dumps(progress, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"topic": topic, "attempts": entry["attempts"], "last_verdict": verdict}
+
+
 class ListFilesArgs(BaseModel):
     subdir: str = Field(".", description="Folder relative to the repository root")
     pattern: str = Field("*", description="File name pattern, e.g. *.py")
@@ -134,10 +205,24 @@ class SearchCodeArgs(BaseModel):
     max_results: int = Field(20, ge=1, le=50)
 
 
+class NoArgs(BaseModel):
+    pass
+
+
+class SaveProgressArgs(BaseModel):
+    topic: str = Field(min_length=2, max_length=80, description="Short topic name, e.g. 'timeout handling'")
+    verdict: Literal["correct", "partial", "incorrect"]
+    note: str = Field("", max_length=300, description="What the student should review")
+
+
 TOOLS = {
     "list_files": (ListFilesArgs, "List source files in the student's repository."),
     "read_file": (ReadFileArgs, f"Read a file with line numbers, at most {MAX_LINES} lines per call."),
     "search_code": (SearchCodeArgs, "Find lines that contain a text in the repository."),
+    "run_tests": (NoArgs, "Run the repository's test suite and get passed/failed counts. "
+                          "Use it to check what the student says about tests."),
+    "get_progress": (NoArgs, "Get the student's results from previous sessions: topics, attempts, last verdict."),
+    "save_progress": (SaveProgressArgs, "Save how the student answered on a topic."),
 }
 
 
@@ -167,6 +252,13 @@ def run_tool(repo, name, args):
     if name == "search_code":
         a = SearchCodeArgs.model_validate(args)
         return search_code(repo, a.query, a.max_results)
+    if name == "run_tests":
+        return run_tests(repo)
+    if name == "get_progress":
+        return get_progress(repo)
+    if name == "save_progress":
+        a = SaveProgressArgs.model_validate(args)
+        return save_progress(repo, a.topic, a.verdict, a.note)
     raise ToolError(f"Unknown tool '{name}'.")
 
 

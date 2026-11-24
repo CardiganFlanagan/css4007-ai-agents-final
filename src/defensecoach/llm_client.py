@@ -111,7 +111,7 @@ class MockClient:
         self.calls = []
 
     def complete(self, messages, tools=None, json_mode=False):
-        self.calls.append({"messages": messages, "tools": tools, "json_mode": json_mode})
+        self.calls.append({"messages": list(messages), "tools": tools, "json_mode": json_mode})
         if not self.answers:
             return LLMResponse(f"[mock] I received: {messages[-1]['content'][:80]}")
         answer = self.answers.pop(0)

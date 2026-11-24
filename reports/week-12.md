@@ -14,9 +14,9 @@
 
 ## Important Commits
 
-- Commit hash: <hash>
+- Commit hash: 3fa0c60
 - Description: Repository tools with path sandbox and structured answer grading
-- Link: https://github.com/CardiganFlanagan/css4007-ai-agents-final/commit/<hash>
+- Link: https://github.com/CardiganFlanagan/css4007-ai-agents-final/commit/3fa0c60
 
 ## Current Functionality
 

@@ -112,6 +112,6 @@ def test_execute_reports_tool_errors_and_unknown_tools(repo):
 
 def test_tool_schemas_match_registered_tools():
     names = [s["function"]["name"] for s in tool_schemas()]
-    assert names == ["list_files", "read_file", "search_code"]
+    assert names == ["list_files", "read_file", "search_code", "run_tests", "get_progress", "save_progress"]
     read = next(s for s in tool_schemas() if s["function"]["name"] == "read_file")
     assert read["function"]["parameters"]["required"] == ["path"]

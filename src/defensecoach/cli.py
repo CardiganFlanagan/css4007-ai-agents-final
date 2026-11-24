@@ -2,24 +2,13 @@ import argparse
 import logging
 import sys
 
+from .agent import Agent
 from .config import ConfigError, load_settings
+from .inputs import InputError, check_input
 from .llm_client import LLMError, make_client
 from .prompts import SYSTEM_PROMPT
+from .tools import Repo, ToolError
 
-MAX_INPUT_CHARS = 4000
-
-
-class InputError(ValueError):
-    pass
-
-
-def check_input(text):
-    text = (text or "").strip()
-    if not text:
-        raise InputError("Empty message. Type a question or an answer.")
-    if len(text) > MAX_INPUT_CHARS:
-        raise InputError(f"Message is too long ({len(text)} chars, max {MAX_INPUT_CHARS}).")
-    return text
 
 
 def ask_once(client, user_text, history=None):
@@ -37,9 +26,9 @@ def ask_once(client, user_text, history=None):
     return response.text
 
 
-def chat(client, settings):
-    history = []
-    print(f"DefenseCoach ({settings.provider}: {settings.model}). Type 'exit' to quit.")
+def chat(send, title):
+    print(title)
+    print("Type 'exit' to quit.")
     while True:
         try:
             line = input("you> ")
@@ -49,7 +38,7 @@ def chat(client, settings):
         if line.strip().lower() in ("exit", "quit"):
             return 0
         try:
-            print("coach>", ask_once(client, line, history))
+            print("coach>", send(line))
         except (InputError, LLMError) as e:
             print(f"Error: {e}")
 
@@ -57,6 +46,7 @@ def chat(client, settings):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="defensecoach", description="Defense trainer agent")
     parser.add_argument("message", nargs="?", help="one message to send")
+    parser.add_argument("--repo", help="path to the project you want to be examined on")
     parser.add_argument("--chat", action="store_true", help="conversation mode")
     parser.add_argument("-v", "--verbose", action="store_true", help="show logs")
     args = parser.parse_args(argv)
@@ -66,17 +56,27 @@ def main(argv=None):
     try:
         settings = load_settings()
         client = make_client(settings)
-    except ConfigError as e:
+        repo = Repo(args.repo) if args.repo else None
+    except (ConfigError, ToolError) as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         return 2
 
+    if repo:
+        agent = Agent(client, repo)
+        send = agent.ask
+        title = f"DefenseCoach on {repo.root.name} ({settings.provider}: {settings.model})"
+    else:
+        history = []
+        send = lambda text: ask_once(client, text, history)
+        title = f"DefenseCoach ({settings.provider}: {settings.model})"
+
     if args.chat:
-        return chat(client, settings)
+        return chat(send, title)
     if not args.message:
         parser.print_help()
         return 1
     try:
-        print(ask_once(client, args.message))
+        print(send(args.message))
         return 0
     except (InputError, LLMError) as e:
         print(f"Error: {e}", file=sys.stderr)
