@@ -16,9 +16,9 @@
 
 ## Important Commits
 
-- Commit hash: <hash>
+- Commit hash: 9e2b3e7
 - Description: Agent loop with model-driven tool selection, run_tests and progress tools, step limit and tool logs
-- Link: https://github.com/CardiganFlanagan/css4007-ai-agents-final/commit/<hash>
+- Link: https://github.com/CardiganFlanagan/css4007-ai-agents-final/commit/9e2b3e7
 
 ## Current Functionality
 
